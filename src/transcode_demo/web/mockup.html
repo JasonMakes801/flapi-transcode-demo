@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FilmLight · FLAPI Transcode Demo (mockup)</title>
+  <link rel="icon" type="image/svg+xml" href="../static/favicon.svg">
+  <!-- relative paths so this opens standalone via file:// for review -->
+  <script defer src="../static/alpine.min.js"></script>
+  <style>
+    @font-face { font-family:'HeroRegular'; src:url('../static/hero_regular.woff') format('woff'); font-display:swap; }
+    @font-face { font-family:'HeroLight';   src:url('../static/hero_light.woff')   format('woff'); font-display:swap; }
+    :root{
+      --bg:#0c0c0e; --bg-2:#131316; --panel:#18181b; --panel-2:#1f1f23;
+      --border:#2a2a2e; --border-2:#3a3a40; --fg:#e6e6e6; --muted:#8b8b91;
+      --accent:#00abff; --accent-dim:#008fd5; --ok:#22d3ee; --bad:#ff5a5a; --raw:#7cc7ff;
+    }
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{height:100%}
+    body{background:var(--bg);color:var(--fg);margin:0;font-size:14px;
+      font-family:ui-sans-serif,-apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif}
+    button{font:inherit;cursor:pointer}
+    input,select{font:inherit;background:var(--panel-2);border:1px solid var(--border);
+      border-radius:4px;padding:0.45rem 0.6rem;color:var(--fg)}
+    input:focus,select:focus{outline:none;border-color:var(--accent)}
+    code{background:var(--panel-2);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.8rem}
+
+    .topbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--border);
+      padding:0.9rem 1.25rem;display:flex;align-items:center;gap:0.85rem}
+    .brand-logo{height:52px;width:auto;display:block}
+    .brand-word{font-family:'HeroRegular',sans-serif;font-size:1.15rem;letter-spacing:.02em}
+    .brand-word b{color:var(--accent);font-weight:400}
+    .brand-sub{color:var(--muted);font-size:0.8rem;letter-spacing:0.10em;font-family:'HeroLight',sans-serif}
+    .brand-stats{margin-left:auto;color:var(--muted);font-size:0.75rem}
+
+    .tabs{position:sticky;top:74px;z-index:25;background:var(--bg-2);border-bottom:1px solid var(--border);
+      display:flex;gap:0.25rem;padding:0 1.25rem}
+    .tab{background:transparent;border:none;color:var(--muted);padding:0.85rem 1.1rem;font-size:0.82rem;
+      letter-spacing:0.06em;border-bottom:2px solid transparent}
+    .tab:hover{color:var(--fg)}
+    .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+    .tab .num{color:var(--muted);margin-left:.4rem;font-size:.72rem}
+
+    main{padding:1.25rem}
+    .muted{color:var(--muted)}
+    .btn{background:var(--accent-dim);border:1px solid var(--accent);color:#fff;border-radius:5px;
+      padding:0.5rem 1rem;font-size:0.82rem}
+    .btn:hover{background:var(--accent)}
+    .btn[disabled]{opacity:.4;cursor:not-allowed}
+    .btn-ghost{background:transparent;border:1px solid var(--border-2);color:var(--muted)}
+    .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-danger{background:transparent;border:1px solid #5a2a2a;color:#ff8a8a}
+    .btn-danger:hover{border-color:var(--bad);color:var(--bad)}
+    .btn-sm{padding:0.3rem 0.7rem;font-size:0.76rem;border-radius:4px}
+
+    .card-panel{background:var(--panel);border:1px solid var(--border);border-radius:7px;
+      padding:1.1rem 1.25rem;margin-bottom:1rem}
+    .card-panel h3{margin:0 0 0.75rem;font-size:0.95rem;font-weight:600}
+    .row{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+    .status-line{display:flex;align-items:center;gap:.6rem;padding:.35rem 0}
+    .led{width:.7rem;height:.7rem;border-radius:999px;background:var(--muted);flex:0 0 auto}
+    .led.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+    .kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem;font-size:.82rem;max-width:520px}
+    .kv .k{color:var(--muted)}
+    .pill{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;background:var(--panel-2);
+      border:1px solid var(--border);border-radius:999px;padding:.15rem .55rem;color:#cfd6dd}
+    .pill.ok{border-color:var(--ok);color:var(--ok)}
+    .pill.raw{border-color:var(--raw);color:var(--raw)}
+
+    /* control bar */
+    .controls{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+    .controls .spacer{flex:1 1 auto}
+    .workerchips{display:flex;gap:.35rem;align-items:center}
+    .wbadge{width:1.5rem;height:1.5rem;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);
+      display:flex;align-items:center;justify-content:center;font-size:.68rem;color:var(--muted)}
+    .wbadge.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 6px rgba(0,171,255,.4)}
+
+    /* scan table */
+    table{width:100%;border-collapse:collapse}
+    thead th{text-align:left;font-size:.72rem;letter-spacing:.05em;color:var(--muted);font-weight:500;
+      padding:.5rem .6rem;border-bottom:1px solid var(--border)}
+    tbody td{padding:.55rem .6rem;border-bottom:1px solid var(--border);vertical-align:middle}
+    tbody tr:hover{background:var(--panel)}
+    .thumb{width:84px;height:48px;border-radius:4px;background:#000;object-fit:cover;display:block}
+    .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.6rem;
+      border:1px solid var(--border)}
+    .fn{font-size:.82rem}
+    .cam{color:var(--muted);font-size:.72rem;margin-top:.15rem}
+    .spec{font-size:.78rem;color:#cfd6dd;white-space:nowrap}
+    .track{height:.7rem;background:var(--panel-2);border-radius:999px;overflow:hidden;border:1px solid var(--border);min-width:120px}
+    .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .25s}
+    .fill.done{background:var(--ok)}
+    .out{display:inline-flex;align-items:center;gap:.4rem;font-size:.76rem}
+    a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+    .statecell{min-width:150px}
+    .empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;font-size:.85rem}
+  </style>
+</head>
+<body x-data="mock()" x-init="$nextTick(()=>{})">
+  <header class="topbar">
+    <img class="brand-logo" src="../static/fl_logo_rev.png" alt="FilmLight">
+    <span class="brand-sub">FLAPI transcode demo</span>
+    <span class="brand-stats" x-text="env.connected ? ('Baselight '+env.build+' · '+workers+' workers') : 'not connected'"></span>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab" :class="{active:tab==='env'}" @click="tab='env'">1 · ENVIRONMENT</button>
+    <button class="tab" :class="{active:tab==='scan'}" @click="tab='scan'">2 · SCAN
+      <span class="num" x-show="clips.length" x-text="doneCount+'/'+clips.length"></span></button>
+    <button class="tab" :class="{active:tab==='about'}" @click="tab='about'" style="margin-left:auto">ABOUT</button>
+  </nav>
+
+  <main>
+    <!-- ===================== ENVIRONMENT ===================== -->
+    <section x-show="tab==='env'">
+      <div class="card-panel">
+        <h3>Baseline render service</h3>
+        <div class="status-line"><span class="led on"></span><span>baseline render service started (own <code>flapid</code>)</span></div>
+        <div class="status-line"><span class="led on"></span><span>licensed &amp; ready</span></div>
+      </div>
+      <div class="card-panel">
+        <h3>Build &amp; licence</h3>
+        <div class="kv">
+          <div class="k">Product</div><div x-text="'Baselight '+env.build"></div>
+          <div class="k">Host</div><div x-text="env.host"></div>
+          <div class="k">FLAPI SDK</div><div x-text="env.sdk"></div>
+        </div>
+        <div class="row" style="margin-top:.6rem">
+          <template x-for="p in env.licence"><span class="pill ok" x-text="p"></span></template>
+        </div>
+      </div>
+      <div class="card-panel">
+        <h3>Destination formats this demo can produce
+          <span class="muted" style="font-weight:400;font-size:0.8rem">— many more on offer with the transcode API</span></h3>
+        <div class="row">
+          <template x-for="f in formats"><span class="pill ok"><span>✓</span><span x-text="f.label"></span></span></template>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SCAN ===================== -->
+    <section x-show="tab==='scan'">
+      <div class="controls">
+        <input style="flex:1 1 360px" type="text" x-model="dir">
+        <button class="btn" @click="scan()" :disabled="scanning" x-text="scanning?'scanning…':'Scan'"></button>
+        <span class="spacer"></span>
+        <label class="muted" style="font-size:.78rem">Deliverable</label>
+        <select x-model="format" style="min-width:230px">
+          <template x-for="f in formats"><option :value="f.key" x-text="f.label"></option></template>
+        </select>
+        <button class="btn" @click="transcodeAll()" :disabled="!clips.length || busy">Transcode all</button>
+        <button class="btn btn-danger btn-sm" @click="deleteAll()" :disabled="!doneCount">Delete all transcodes</button>
+      </div>
+
+      <div class="row" style="margin-bottom:.6rem">
+        <span class="muted" style="font-size:.78rem">3 workers</span>
+        <div class="workerchips">
+          <template x-for="w in [0,1,2]"><span class="wbadge" :class="{active:activeWorkers>w}" x-text="'W'+(w+1)"></span></template>
+        </div>
+        <span class="muted" style="font-size:.78rem;margin-left:auto" x-text="outDir"></span>
+      </div>
+
+      <template x-if="!clips.length">
+        <div class="empty" x-text="scanning?'crawling…':'Point at a directory and hit Scan. Camera media appears below with metadata; transcode any row, or all.'"></div>
+      </template>
+
+      <div class="card-panel" x-show="clips.length" style="padding:.3rem .6rem">
+        <table>
+          <thead><tr>
+            <th></th><th>Clip</th><th>Format</th><th>Resolution</th><th>FPS</th><th>Duration</th>
+            <th>Transcode</th><th class="statecell">Status</th>
+          </tr></thead>
+          <tbody>
+            <template x-for="c in clips" :key="c.id">
+              <tr>
+                <td><div class="thumb ph">RAW</div></td>
+                <td><div class="fn" x-text="c.name"></div><div class="cam" x-text="c.camera"></div></td>
+                <td>
+                  <span class="pill raw" x-show="c.raw">RAW · debayer</span>
+                  <span class="pill" x-show="!c.raw" x-text="c.codec"></span>
+                </td>
+                <td class="spec" x-text="c.res"></td>
+                <td class="spec" x-text="c.fps"></td>
+                <td class="spec" x-text="c.dur+'s'"></td>
+                <td>
+                  <button class="btn btn-sm" @click="transcode(c)"
+                          x-show="c.state==='idle'">Transcode ▸</button>
+                  <span class="muted" style="font-size:.74rem" x-show="c.state==='queued'">queued</span>
+                  <div class="track" x-show="c.state==='running'"><div class="fill" :style="`width:${c.pct}%`"></div></div>
+                  <button class="btn-ghost btn btn-sm" @click="transcode(c)" x-show="c.state==='done'">Re-transcode</button>
+                </td>
+                <td class="statecell">
+                  <span class="muted" style="font-size:.76rem" x-show="c.state==='idle'">—</span>
+                  <span style="font-size:.76rem;color:var(--accent)" x-show="c.state==='running'" x-text="c.pct+'%'"></span>
+                  <span class="out" x-show="c.state==='done'">
+                    <span style="color:var(--ok)">✓</span>
+                    <a href="#" @click.prevent x-text="'▶ '+c.outName"></a>
+                    <span class="muted" x-text="c.size+' · '+c.secs+'s'"></span>
+                  </span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== ABOUT ===================== -->
+    <section x-show="tab==='about'">
+      <div class="card-panel">
+        <h3>What this is</h3>
+        <p class="muted" style="line-height:1.6;max-width:680px">
+          A reference integration: drive the FilmLight render API (<code>flapi</code>)
+          from your own app to mass-transcode camera originals to editorial proxies,
+          with a small web GUI on top. The point is that the API is yours to build on.
+        </p>
+      </div>
+      <div class="card-panel">
+        <h3>The stack — deliberately tiny</h3>
+        <div class="kv">
+          <div class="k">Backend</div><div>Python + FastAPI (one process)</div>
+          <div class="k">Frontend</div><div>Alpine.js, served by FastAPI — no Node, no npm, no build step</div>
+          <div class="k">Render</div><div>FilmLight <code>flapi</code>; each of 3 workers launches its own child <code>flapid</code></div>
+          <div class="k">Dependencies</div><div>fastapi, uvicorn, and the Baselight <code>filmlightapi</code> wheel</div>
+          <div class="k">Run</div><div><code>./bootstrap.sh</code> once, then <code>./run.sh</code> → <code>http://localhost:8080</code></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function mock(){
+      return {
+        tab:'env',
+        env:{connected:true, build:'7.0.1.25379', host:'localhost', sdk:'7.0.1',
+             licence:['Baselight','BaselightMac','MultiGPU','Truelight']},
+        formats:[
+          {key:'h264', label:'H.264 (MP4) — web playable'},
+          {key:'prores', label:'ProRes 422 Proxy (QuickTime)'},
+          {key:'hevc', label:'HEVC (QuickTime)'},
+        ],
+        format:'h264',
+        dir:'/Volumes/Extreme SSD/transcode_demo_media',
+        outDir:'→ outputs: ~/transcode_demo_output',
+        workers:3,
+        scanning:false,
+        clips:[],
+        _seed:[
+          {name:'ARRI_AlexaMiniLF_ARRIRAW.mxf', camera:'ARRI Alexa Mini LF', raw:true,  codec:'ARRIRAW',          res:'4448×3096', fps:'24.00', dur:'5.0'},
+          {name:'RED_TheMaker_A010_C009.R3D',    camera:'RED (REDCODE RAW)',  raw:true,  codec:'REDCODE RAW',      res:'6144×3160', fps:'23.98', dur:'4.0'},
+          {name:'BMD_BRAW_OnTheStreet.braw',     camera:'Blackmagic URSA',    raw:true,  codec:'Blackmagic RAW',   res:'4608×2592', fps:'24.00', dur:'3.5'},
+          {name:'CANON_CinemaRAWLight.CRM',      camera:'Canon (Cinema RAW Light)', raw:true, codec:'Cinema RAW Light', res:'5952×3140', fps:'23.98', dur:'2.5'},
+          {name:'SONY_F55_XOCN_4K.mxf',          camera:'Sony F55 (X-OCN)',   raw:true,  codec:'X-OCN',            res:'4096×2160', fps:'24.00', dur:'3.0'},
+        ],
+        get doneCount(){ return this.clips.filter(c=>c.state==='done').length },
+        get busy(){ return this.clips.some(c=>c.state==='running'||c.state==='queued') },
+        get activeWorkers(){ return Math.min(3, this.clips.filter(c=>c.state==='running').length) },
+        scan(){
+          this.clips=[]; this.scanning=true; let i=0;
+          const add=()=>{ if(i>=this._seed.length){this.scanning=false;return;}
+            this.clips.push({id:i, ...this._seed[i], state:'idle', pct:0, outName:'', size:'', secs:''});
+            i++; setTimeout(add, 350); };
+          add();
+        },
+        extFor(){ return this.format==='h264'?'.mp4':'.mov'; },
+        transcode(c){
+          if(this.activeWorkers>=3 && c.state==='idle'){ c.state='queued'; this._drain(); return; }
+          this._run(c);
+        },
+        transcodeAll(){ this.clips.forEach(c=>{ if(c.state==='idle'||c.state==='done'){ c.state='queued'; }}); this._drain(); },
+        _drain(){
+          while(this.activeWorkers<3){
+            const next=this.clips.find(c=>c.state==='queued'); if(!next) break; this._run(next);
+          }
+        },
+        _run(c){
+          c.state='running'; c.pct=0;
+          const t=setInterval(()=>{
+            c.pct+=Math.floor(8+Math.random()*16);
+            if(c.pct>=100){ c.pct=100; clearInterval(t);
+              c.state='done';
+              c.outName=c.name.replace(/\.[^.]+$/,'')+'_'+this.format+this.extFor();
+              c.size=(20+Math.random()*30).toFixed(0)+'MB'; c.secs=(4+Math.random()*6).toFixed(0);
+              this._drain();
+            }
+          }, 280);
+        },
+        deleteAll(){ this.clips.forEach(c=>{ c.state='idle'; c.pct=0; c.outName=''; c.size=''; c.secs=''; }); },
+      };
+    }
+  </script>
+</body>
+</html>

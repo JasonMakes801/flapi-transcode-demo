@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.egg-info/
+*.pyc
+.transcode-demo/
+transcode_demo_output/
+build/
+dist/
+.DS_Store
+.pytest_cache/
+
+# internal comms drafts — not for the public repo
+ZULIP_POST.md
+ZULIP_POST_update.md

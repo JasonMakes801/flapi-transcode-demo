@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "transcode-demo"
+version = "0.1.1"
+description = "Web GUI demo for mass transcode over the FilmLight render API (flapi)"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+# NOTE: the FilmLight `flapi` (filmlightapi) wheel is NOT listed here — it is
+# pulled from the locally installed Baselight build by bootstrap.sh, because it
+# is versioned to the build, not published on PyPI.
+
+[project.optional-dependencies]
+# Dev-only. Drives the real UI end-to-end with a headed browser; needs a
+# licensed Baselight (it does an actual scan + transcode). Never shipped.
+test = [
+    "pytest>=8",
+    "pytest-playwright>=0.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[project.scripts]
+transcode-demo = "transcode_demo.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+transcode_demo = ["web/*.html", "static/*"]

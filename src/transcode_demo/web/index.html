@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FilmLight · FLAPI Transcode Demo</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <script defer src="/static/alpine.min.js"></script>
+  <style>
+    @font-face { font-family:'HeroRegular'; src:url('/static/hero_regular.woff') format('woff'); font-display:swap; }
+    @font-face { font-family:'HeroLight';   src:url('/static/hero_light.woff')   format('woff'); font-display:swap; }
+    :root{
+      --bg:#0c0c0e; --bg-2:#131316; --panel:#18181b; --panel-2:#1f1f23;
+      --border:#2a2a2e; --border-2:#3a3a40; --fg:#e6e6e6; --muted:#8b8b91;
+      /* Unified blue family on black: accent (primary) -> cyan (done) -> light
+         blue (raw/source). Red is reserved strictly for danger/errors. */
+      --accent:#00abff; --accent-dim:#008fd5; --ok:#22d3ee; --bad:#ff5a5a; --raw:#7cc7ff;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    *,*::before,*::after{box-sizing:border-box}
+    [x-cloak]{display:none!important}
+    html,body{height:100%}
+    body{background:var(--bg);color:var(--fg);margin:0;font-size:14px;
+      font-family:ui-sans-serif,-apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif}
+    button{font:inherit;cursor:pointer}
+    input,select{font:inherit;background:var(--panel-2);border:1px solid var(--border);
+      border-radius:4px;padding:0.45rem 0.6rem;color:var(--fg)}
+    input:focus,select:focus{outline:none;border-color:var(--accent)}
+    code{background:var(--panel-2);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.8rem}
+    a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+    .topbar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--border);
+      padding:0.9rem 1.25rem;display:flex;align-items:center;gap:0.85rem}
+    .brand-logo{height:52px;width:auto;display:block}
+    .brand-sub{color:var(--muted);font-size:0.8rem;letter-spacing:0.10em;font-family:'HeroLight',sans-serif}
+    .brand-stats{margin-left:auto;color:var(--muted);font-size:0.75rem;font-family:var(--mono)}
+
+    .tabs{position:sticky;top:74px;z-index:25;background:var(--bg-2);border-bottom:1px solid var(--border);
+      display:flex;gap:0.25rem;padding:0 1.25rem}
+    .tab{background:transparent;border:none;color:var(--muted);padding:0.85rem 1.1rem;font-size:0.82rem;
+      letter-spacing:0.06em;border-bottom:2px solid transparent}
+    .tab:hover{color:var(--fg)}
+    .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+    .tab .num{color:var(--muted);margin-left:.4rem;font-size:.72rem}
+    .lozenge{display:inline-flex;align-items:center;justify-content:center;min-width:1.4rem;height:1.4rem;
+      padding:0 .5rem;margin-left:.55rem;border-radius:999px;background:var(--accent);color:#04121d;
+      font-size:.74rem;font-weight:600;vertical-align:middle}
+
+    main{padding:1.25rem;padding-bottom:3rem}
+    .muted{color:var(--muted)}
+    .btn{background:var(--accent-dim);border:1px solid var(--accent);color:#fff;border-radius:5px;
+      padding:0.5rem 1rem;font-size:0.82rem}
+    .btn:hover{background:var(--accent)}
+    .btn[disabled]{opacity:.4;cursor:not-allowed}
+    .btn-ghost{background:transparent;border:1px solid var(--border-2);color:var(--muted)}
+    .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-danger{background:transparent;border:1px solid #5a2a2a;color:#ff8a8a}
+    .btn-danger:hover{border-color:var(--bad);color:var(--bad)}
+    .btn-red{background:#9e3535;border:1px solid var(--bad);color:#fff}
+    .btn-red:hover{background:var(--bad)}
+    .btn-sm{padding:0.3rem 0.7rem;font-size:0.76rem;border-radius:4px}
+    .spin{display:inline-block;width:.95rem;height:.95rem;border:2px solid rgba(255,255,255,.3);
+      border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+    .spin.dark{border-color:rgba(0,171,255,.25);border-top-color:var(--accent)}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    /* keep the Scan button from collapsing when it shows just a spinner */
+    .btn-fixed{min-width:5.2rem;display:inline-flex;align-items:center;justify-content:center}
+
+    .card-panel{background:var(--panel);border:1px solid var(--border);border-radius:7px;
+      padding:1.1rem 1.25rem;margin-bottom:1rem}
+    .card-panel h3{margin:0 0 0.75rem;font-size:0.95rem;font-weight:600}
+    .row{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+    .status-line{display:flex;align-items:center;gap:.6rem;padding:.35rem 0}
+    .led{width:.7rem;height:.7rem;border-radius:999px;background:var(--muted);flex:0 0 auto}
+    .led.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+    .led.off{background:var(--bad)}
+    .kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem;font-size:.82rem;max-width:560px;font-family:var(--mono)}
+    .kv .k{color:var(--muted);font-family:ui-sans-serif,-apple-system,sans-serif}
+    .pill{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;background:var(--panel-2);
+      border:1px solid var(--border);border-radius:999px;padding:.15rem .55rem;color:#cfd6dd}
+    .pill.ok{border-color:var(--ok);color:var(--ok)}
+    .pill.no{border-color:var(--border-2);color:var(--muted);opacity:.7}
+    .pill.raw{border-color:var(--raw);color:var(--raw)}
+
+    .controls{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+    .controls .spacer{flex:1 1 auto}
+    .workerchips{display:flex;gap:.35rem;align-items:center}
+    .wbadge{width:1.5rem;height:1.5rem;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);
+      display:flex;align-items:center;justify-content:center;font-size:.68rem;color:var(--muted)}
+    .wbadge.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 6px rgba(0,171,255,.4)}
+
+    /* Scan tab — 2x2 control grid (in/out dir · deliverable/colourspace) */
+    .scan-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem 1rem;margin-bottom:.9rem}
+    .scan-cell{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:.55rem .7rem}
+    .scan-cell .lbl{display:flex;align-items:baseline;gap:.4rem;font-size:.7rem;letter-spacing:.04em;
+      text-transform:uppercase;color:var(--muted);margin-bottom:.4rem}
+    .scan-cell .lbl .hint{text-transform:none;letter-spacing:0;color:var(--accent);font-size:.7rem}
+    .scan-cell .field{display:flex;gap:.45rem;align-items:center}
+    .scan-cell .field input,.scan-cell .field select{flex:1 1 auto;min-width:0}
+    .scan-cell .pathval{flex:1 1 auto;min-width:0;font-family:var(--mono);font-size:.78rem;color:#cfd6dd;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+    .scan-run{display:flex;justify-content:flex-end;margin:-.2rem 0 .9rem}
+    .scan-actions{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.8rem}
+    .scan-actions .sp{flex:1 1 auto}
+    .cliptable-scroll{max-height:52vh;overflow:auto}
+    .cliptable-scroll thead th{position:sticky;top:0;background:var(--panel-2);z-index:1}
+
+    table{width:100%;border-collapse:collapse}
+    thead th{text-align:left;font-size:.72rem;letter-spacing:.05em;color:var(--muted);font-weight:500;
+      padding:.5rem .6rem;border-bottom:1px solid var(--border)}
+    tbody td{padding:.55rem .6rem;border-bottom:1px solid var(--border);vertical-align:middle}
+    tbody tr:hover{background:var(--panel)}
+    .thumb{width:96px;height:54px;border-radius:4px;background:#000;object-fit:cover;display:block;cursor:pointer}
+    .thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.6rem;border:1px solid var(--border);cursor:default}
+    .thumbwrap{position:relative;width:96px;height:54px}
+    .playover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,.35);border-radius:4px;cursor:pointer;color:#fff;font-size:1.1rem}
+    .fn{font-size:.82rem}
+    .cam{color:var(--muted);font-size:.72rem;margin-top:.15rem}
+    .pipe{font-size:.72rem;color:#cfd6dd;white-space:nowrap;font-family:var(--mono)}
+    .pipe .arr{color:var(--accent);margin:0 .35rem}
+    .pipe .src{color:var(--raw)}
+    .pipe .cs{color:var(--muted)}
+    .pipe .sep{color:var(--muted);margin:0 .3rem}
+    .pipe .dst{color:var(--ok)}
+    .spec{font-size:.78rem;color:#cfd6dd;white-space:nowrap;font-family:var(--mono)}
+    .track{height:.7rem;background:var(--panel-2);border-radius:999px;overflow:hidden;border:1px solid var(--border);min-width:120px}
+    .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .25s}
+    .fill.done{background:var(--ok)}.fill.failed{background:var(--bad)}
+    .statecell{min-width:160px;font-family:var(--mono)}
+    .out{display:inline-flex;align-items:center;gap:.4rem;font-size:.76rem}
+    .empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;font-size:.85rem}
+
+    /* flapid process list (Environment + Teardown) */
+    .proclist{display:flex;flex-direction:column;gap:.4rem}
+    .procrow{display:flex;align-items:center;gap:.7rem;padding:.45rem .65rem;background:var(--panel-2);
+      border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:.78rem}
+    .procrow .role{min-width:4.2rem;text-transform:uppercase;letter-spacing:.05em;font-size:.7rem}
+    .procrow .role.search{color:var(--accent)}
+    .procrow .role.render{color:var(--ok)}
+    .procrow .pidv{color:#e6e6e6}
+    .procrow .meta{color:var(--muted)}
+    .procrow .sp{flex:1 1 auto}
+
+    /* directory chooser */
+    .browselist{max-height:48vh;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg-2)}
+    .browseitem{display:flex;align-items:center;gap:.55rem;padding:.45rem .65rem;cursor:pointer;font-size:.82rem;
+      border-bottom:1px solid var(--border);font-family:var(--mono)}
+    .browseitem:last-child{border-bottom:none}
+    .browseitem:hover{background:var(--panel);color:var(--accent)}
+    .browseitem .ic{opacity:.75}
+    .browsepath{font-family:var(--mono);font-size:.76rem;color:var(--muted);margin:.2rem 0 .5rem;word-break:break-all}
+
+    /* live FLAPI-call log drawer (bottom, across all tabs) */
+    .drawer{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--bg-2);
+      border-top:1px solid var(--border);font-family:var(--mono);font-size:.76rem}
+    .drawer-head{display:flex;align-items:center;gap:.6rem;padding:.4rem .9rem;cursor:pointer;user-select:none}
+    .drawer-title{color:var(--accent);letter-spacing:.06em;font-size:.7rem;flex:0 0 auto}
+    .drawer-now{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cfd6dd}
+    .drawer-now .m{color:var(--accent)}
+    .drawer-meta{flex:0 0 auto;color:var(--muted);font-size:.7rem}
+    .drawer-caret{flex:0 0 auto;color:var(--accent);font-size:.85rem;width:1.1rem;text-align:center}
+    .drawer-body{max-height:30vh;overflow:auto;padding:.35rem .9rem .7rem;border-top:1px solid var(--border)}
+    .logline{display:flex;gap:.55rem;align-items:baseline;padding:.1rem 0}
+    .logline .op{flex:0 0 auto;font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;border-radius:3px;
+      padding:0 .3rem;line-height:1.4}
+    .op.probe{color:var(--accent);border:1px solid var(--accent)}
+    .op.scan{color:var(--raw);border:1px solid var(--raw)}
+    .op.transcode{color:var(--ok);border:1px solid var(--ok)}
+    .logline .m{color:#e6e6e6;flex:0 0 auto}
+    .logline .d{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .drawer-clear{flex:0 0 auto;background:transparent;border:1px solid var(--border-2);color:var(--muted);
+      border-radius:4px;padding:.05rem .4rem;font-size:.68rem}
+    .drawer-clear:hover{border-color:var(--accent);color:var(--accent)}
+
+    /* modal player */
+    .modal-bg{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:2rem}
+    .modal{position:relative;background:var(--panel);border:1px solid var(--border-2);border-radius:8px;max-width:1100px;width:100%;overflow:hidden}
+    /* close button (used by the directory chooser, top-right) */
+    .modal-x{position:absolute;top:.5rem;right:.55rem;z-index:5;width:1.9rem;height:1.9rem;border-radius:50%;
+      background:rgba(0,0,0,.6);border:1px solid var(--border-2);color:#fff;font-size:.95rem;line-height:1;
+      display:flex;align-items:center;justify-content:center}
+    .modal-x:hover{background:var(--bad);border-color:var(--bad)}
+    /* player modal: header bar (name + close), video, foot — nothing overlaps */
+    /* header bar holds name + TC + close — no overlay on the video, so it never
+       collides with the player's native fullscreen / PiP controls */
+    .modal-head{display:flex;align-items:center;gap:.8rem;padding:.6rem .9rem;border-bottom:1px solid var(--border)}
+    .modal-head .mh-name{flex:1 1 auto;min-width:0;font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+    .modal-head .mh-tc{flex:0 0 auto;font-family:var(--mono);font-size:.82rem;color:#bfe9ff}
+    .mh-x{flex:0 0 auto;width:1.8rem;height:1.8rem;border-radius:50%;background:var(--panel-2);
+      border:1px solid var(--border-2);color:var(--fg);display:flex;align-items:center;justify-content:center;font-size:.9rem;line-height:1}
+    .mh-x:hover{background:var(--bad);border-color:var(--bad);color:#fff}
+    .player{position:relative;background:#000}
+    .player video{display:block;width:100%;max-height:68vh;background:#000}
+    .modal .foot{display:flex;gap:.6rem;align-items:center;padding:.7rem .9rem;flex-wrap:wrap;border-top:1px solid var(--border)}
+    .pipe-info{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-size:.78rem}
+  </style>
+</head>
+<body x-data="app()" x-init="init()">
+  <header class="topbar">
+    <img class="brand-logo" src="/static/fl_logo_rev.png" alt="FilmLight">
+    <span class="brand-sub">FLAPI transcode demo</span>
+    <span class="brand-stats" x-text="statusLine"></span>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab" data-testid="tab-env" :class="{active:tab==='env'}"  @click="tab='env'">1 · ENVIRONMENT</button>
+    <button class="tab" data-testid="tab-scan" :class="{active:tab==='scan'}" @click="tab='scan'">2 · SCAN</button>
+    <button class="tab" data-testid="tab-teardown" :class="{active:tab==='teardown'}" @click="tab='teardown'">3 · TEARDOWN
+      <span class="num" x-show="procs.length" x-text="procs.length"></span></button>
+    <button class="tab" :class="{active:tab==='about'}" @click="tab='about'" style="margin-left:auto">ABOUT</button>
+  </nav>
+
+  <main>
+    <!-- ===================== ENVIRONMENT ===================== -->
+    <section x-show="tab==='env'">
+      <div class="row" style="margin-bottom:1rem">
+        <button class="btn btn-fixed" @click="runProbe()" :disabled="probing" style="min-width:11rem">
+          <span class="spin" x-show="probing"></span>
+          <span x-show="!probing">Re-probe environment</span>
+        </button>
+      </div>
+      <div class="card-panel">
+        <h3>FLAPI render daemon</h3>
+        <div class="status-line"><span class="led" :class="probe.service_up?'on':'off'"></span>
+          <span>spawned our own child <code>flapid</code> — no running Baselight app required</span></div>
+        <div class="status-line"><span class="led" data-testid="led-licensed" :class="probe.connected?'on':'off'"></span>
+          <span>licensed &amp; ready</span></div>
+        <div class="status-line" x-show="buildVersion">
+          <span class="led on" style="background:var(--accent);box-shadow:0 0 8px var(--accent)"></span>
+          <span>launched from <code x-text="'Baselight '+buildVersion"></code></span></div>
+        <template x-if="probe.error"><div style="color:var(--bad);margin-top:.5rem" x-text="probe.error"></div></template>
+      </div>
+      <div class="card-panel" x-show="probe.connected">
+        <h3>Build &amp; licence</h3>
+        <div class="kv">
+          <template x-for="(v,k) in flatApp" :key="k">
+            <template x-if="true"><div style="display:contents"><div class="k" x-text="k"></div><div x-text="v"></div></div></template>
+          </template>
+        </div>
+        <div class="row" style="margin-top:.6rem">
+          <template x-for="l in (probe.licence?.items||[])" :key="l.Product"><span class="pill ok" x-text="l.Product+' '+(l.Version||'')"></span></template>
+        </div>
+      </div>
+      <div class="card-panel" x-show="probe.connected">
+        <h3>Destination formats this demo can produce
+          <span class="muted" style="font-weight:400;font-size:0.8rem">— many more on offer with the transcode API</span></h3>
+        <div class="row">
+          <template x-for="p in (probe.capabilities?.presets||[])" :key="p.key">
+            <span class="pill" :class="p.supported?'ok':'no'"><span x-text="p.supported?'✓':'—'"></span><span x-text="p.label"></span></span>
+          </template>
+        </div>
+      </div>
+      <div class="card-panel">
+        <h3>flapid processes
+          <span class="muted" style="font-weight:400;font-size:.8rem">— spun up by this demo (manage in the Teardown tab)</span></h3>
+        <template x-if="!procs.length"><div class="muted" style="font-size:.82rem">none running</div></template>
+        <div class="proclist">
+          <template x-for="p in procs" :key="p.pid">
+            <div class="procrow" data-testid="proc-row">
+              <span class="role" :class="p.role" x-text="p.role"></span>
+              <span class="pidv" x-text="'pid '+p.pid"></span>
+              <span class="meta" x-text="'up '+fmtDur(p.uptime_s)"></span>
+              <span class="meta" x-show="p.pid===svc.pid && svc.idle_remaining_s!=null"
+                    x-text="'· idle teardown in '+fmtDur(svc.idle_remaining_s)"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SCAN (discover + render) ===================== -->
+    <section x-show="tab==='scan'">
+      <div class="scan-grid">
+        <!-- Row 1 — source & output folders -->
+        <div class="scan-cell">
+          <div class="lbl">Source folder</div>
+          <div class="field">
+            <input type="text" x-model="dir" data-testid="scan-dir"
+                   placeholder="/Volumes/Extreme SSD/transcode_demo_media" @keydown.enter="scan()">
+            <button class="btn-ghost btn btn-sm" @click="openBrowse()" title="Choose folder">📁</button>
+          </div>
+        </div>
+        <div class="scan-cell">
+          <div class="lbl">Output folder</div>
+          <div class="field">
+            <input type="text" data-testid="outdir" :value="outDir" readonly @click="openBrowse('output')"
+                   title="Click to change output folder"
+                   style="cursor:pointer;color:var(--ok);border-color:var(--ok)">
+            <button class="btn-ghost btn btn-sm" @click="openBrowse('output')" title="Change output folder">📁</button>
+          </div>
+        </div>
+        <!-- Row 2 — deliverable & colourspace (apply to every clip) -->
+        <div class="scan-cell">
+          <div class="lbl">Deliverable <span class="hint">· applies to all clips</span></div>
+          <div class="field">
+            <select x-model="deliverable" data-testid="deliverable">
+              <optgroup label="Recommended">
+                <template x-for="d in recommendedDeliverables" :key="d.key"><option :value="d.key" x-text="d.label"></option></template>
+              </optgroup>
+              <optgroup label="All movie codecs">
+                <template x-for="d in otherDeliverables" :key="d.key"><option :value="d.key" x-text="d.label"></option></template>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+        <div class="scan-cell">
+          <div class="lbl">Output colourspace <span class="hint">· applies to all clips</span></div>
+          <div class="field">
+            <select x-model="colourspace" data-testid="colourspace">
+              <optgroup label="Recommended">
+                <template x-for="c in recommendedCS" :key="c.key"><option :value="c.key" x-text="c.label"></option></template>
+              </optgroup>
+              <optgroup label="All display colourspaces">
+                <template x-for="c in allCS" :key="c.key"><option :value="c.key" x-text="c.label"></option></template>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="scan-run">
+        <button class="btn btn-fixed" data-testid="scan-btn" @click="scan()" :disabled="scanning" style="min-width:8rem">
+          <span class="spin" x-show="scanning"></span>
+          <span x-show="!scanning">Scan folder</span>
+        </button>
+      </div>
+
+      <template x-if="!clips.length && !scanning">
+        <div class="empty">Point at a directory and hit Scan. Camera media appears with metadata; transcode any row, or all.</div>
+      </template>
+
+      <div class="card-panel" x-show="clips.length" style="padding:.3rem .6rem">
+        <div class="cliptable-scroll">
+        <table>
+          <thead><tr>
+            <th></th><th>Clip</th><th>Pipeline</th><th>Resolution</th><th>FPS</th><th>Duration</th>
+            <th>Transcode</th><th class="statecell">Status</th>
+          </tr></thead>
+          <tbody>
+            <template x-for="c in clips" :key="c.id">
+              <tr data-testid="clip-row" :data-state="c.state" :data-name="c.name">
+                <td>
+                  <div class="thumbwrap">
+                    <template x-if="c.poster_url"><img class="thumb" :src="c.poster_url" loading="lazy" decoding="async" @click="c.state==='done' && openPlayer(c)"></template>
+                    <template x-if="!c.poster_url && c.thumb_state==='pending'"><div class="thumb ph"><span class="spin dark"></span></div></template>
+                    <template x-if="!c.poster_url && c.thumb_state!=='pending'"><div class="thumb ph">no preview</div></template>
+                    <div class="playover" x-show="c.state==='done'" @click="openPlayer(c)">▶</div>
+                  </div>
+                </td>
+                <td><div class="fn" x-text="c.name"></div><div class="cam" x-text="c.camera"></div></td>
+                <td>
+                  <div class="pipe">
+                    <span class="src" x-text="c.src_codec||c.camera"></span>
+                    <span class="spin dark" x-show="!c.input_cs && pend(c)" style="width:.6rem;height:.6rem;margin:0 .2rem"></span>
+                    <span class="sep" x-show="c.input_cs">:</span>
+                    <span class="cs" x-text="c.input_cs ? pretty(c.input_cs) : ''"></span>
+                    <span class="arr">→</span>
+                    <span class="dst" x-text="rightFormat(c)"></span>
+                    <span class="sep">:</span>
+                    <span class="cs" x-text="rightCS(c)"></span>
+                  </div>
+                  <span class="pill raw" x-show="c.raw" style="margin-top:.2rem">RAW · debayer</span>
+                </td>
+                <td class="spec">
+                  <span x-show="c.meta?.width" x-text="c.meta?.width ? (c.meta.width+'×'+c.meta.height) : ''"></span>
+                  <span class="spin dark" x-show="!c.meta?.width && pend(c)"></span>
+                  <span x-show="!c.meta?.width && !pend(c)">—</span>
+                </td>
+                <td class="spec">
+                  <span x-show="c.meta?.fps" x-text="c.meta?.fps ? (+c.meta.fps).toFixed(2) : ''"></span>
+                  <span class="spin dark" x-show="!c.meta?.fps && pend(c)"></span>
+                  <span x-show="!c.meta?.fps && !pend(c)">—</span>
+                </td>
+                <td class="spec">
+                  <span x-show="c.meta?.duration_seconds" x-text="c.meta?.duration_seconds ? (+c.meta.duration_seconds).toFixed(1)+'s' : ''"></span>
+                  <span class="spin dark" x-show="!c.meta?.duration_seconds && pend(c)"></span>
+                  <span x-show="!c.meta?.duration_seconds && !pend(c)">—</span>
+                </td>
+                <td>
+                  <button class="btn btn-sm" data-testid="row-transcode" @click="transcode(c)" x-show="c.state==='idle'||c.state==='failed'">Transcode ▸</button>
+                  <span class="muted" style="font-size:.74rem" x-show="c.state==='queued'">queued</span>
+                  <div class="track" x-show="c.state==='rendering'"><div class="fill" :style="`width:${Math.round((c.progress||0)*100)}%`"></div></div>
+                  <button class="btn-ghost btn btn-sm" @click="transcode(c)" x-show="c.state==='done'">Re-transcode</button>
+                </td>
+                <td class="statecell">
+                  <span class="muted" style="font-size:.76rem" x-show="c.state==='idle'">—</span>
+                  <span style="font-size:.76rem;color:var(--bad)" x-show="c.state==='failed'" :title="c.error" x-text="'failed'"></span>
+                  <span style="font-size:.76rem;color:var(--accent)" x-show="c.state==='rendering'" x-text="Math.round((c.progress||0)*100)+'%'"></span>
+                  <span class="out" x-show="c.state==='done'">
+                    <a href="#" @click.prevent="openPlayer(c)">▶ play</a>
+                    <span class="muted" x-text="fmtSize(c.size_bytes)+' · '+(c.wall_seconds?c.wall_seconds.toFixed(0)+'s':'')"></span>
+                  </span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <!-- Action bar — below the clip rows -->
+      <div class="scan-actions" x-show="clips.length">
+        <span class="muted" style="font-size:.78rem" x-text="workers+(workers===1?' worker':' workers')"></span>
+        <div class="workerchips">
+          <template x-for="w in workerSlots" :key="w"><span class="wbadge" :class="{active:activeWorkers>w}" x-text="'W'+(w+1)"></span></template>
+        </div>
+        <span class="muted" style="font-size:.78rem" x-show="!scanning && scanMsg" x-text="scanMsg"></span>
+        <span class="sp"></span>
+        <button class="btn btn-fixed" data-testid="transcode-all" @click="transcodeAll()" :disabled="!clips.length || !deliverable || transcoding" style="min-width:8rem">
+          <span class="spin" x-show="transcoding"></span>
+          <span x-show="!transcoding">Transcode all</span>
+        </button>
+        <button class="btn btn-danger" @click="cancelAll()" x-show="transcoding">Cancel</button>
+        <button class="btn btn-red" data-testid="delete-all" @click="deleteAll()" :disabled="!doneCount || transcoding">Delete all transcodes</button>
+      </div>
+    </section>
+
+    <!-- ===================== TEARDOWN ===================== -->
+    <section x-show="tab==='teardown'">
+      <div class="card-panel">
+        <h3>flapid process lifecycle
+          <span class="lozenge" x-show="procs.length" x-text="procs.length"></span></h3>
+        <p class="muted" style="line-height:1.6;max-width:720px;font-size:.85rem">
+          The demo keeps one persistent <b style="color:var(--accent)">search</b> flapid (probe + scan)
+          and launches an ephemeral <b style="color:var(--ok)">render</b> flapid per worker. They tear
+          themselves down on the idle timeout — or kill them here. Scan/Transcode will spin up new
+          ones automatically as needed.
+        </p>
+        <div class="row" style="margin:.9rem 0">
+          <button class="btn btn-red" data-testid="kill-all" @click="killAll()" :disabled="!procs.length">Kill all flapids</button>
+          <span class="muted" style="font-size:.8rem;font-family:var(--mono)" x-show="svc.up">
+            search flapid idle teardown in <span x-text="fmtDur(svc.idle_remaining_s)"></span>
+            of <span x-text="fmtDur(svc.idle_timeout_s)"></span>
+          </span>
+        </div>
+        <template x-if="!procs.length">
+          <div class="empty">No flapids running. Run a Scan or Transcode to spin one up.</div>
+        </template>
+        <div class="proclist">
+          <template x-for="p in procs" :key="p.pid">
+            <div class="procrow" data-testid="proc-row">
+              <span class="role" :class="p.role" x-text="p.role"></span>
+              <span class="pidv" x-text="'pid '+p.pid"></span>
+              <span class="meta" x-text="'up '+fmtDur(p.uptime_s)"></span>
+              <span class="meta" x-show="p.pid===svc.pid && svc.idle_remaining_s!=null"
+                    x-text="'· idle teardown in '+fmtDur(svc.idle_remaining_s)"></span>
+              <span class="sp"></span>
+              <button class="btn-danger btn btn-sm" @click="killProc(p.pid)">Kill</button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== ABOUT ===================== -->
+    <section x-show="tab==='about'">
+      <div class="card-panel">
+        <h3>What this is</h3>
+        <p class="muted" style="line-height:1.6;max-width:680px">
+          A reference integration showing you can drive the FilmLight render API
+          (<code>FLAPI</code>) from your own application — mass-transcoding camera
+          originals to editorial proxies, with a small web GUI on top. The API is
+          yours to build on.
+        </p>
+      </div>
+      <div class="card-panel">
+        <h3>The stack — deliberately tiny</h3>
+        <div class="kv">
+          <div class="k">Backend</div><div>Python + FastAPI (one process)</div>
+          <div class="k">Frontend</div><div>Alpine.js, served by FastAPI — no Node, no npm, no build step</div>
+          <div class="k">Render</div><div>FilmLight <code>FLAPI</code>; each worker launches its own child <code>flapid</code> per clip, torn down after (<span x-text="workers"></span> <span x-text="workers===1?'worker':'workers'"></span>, set <code>TCDEMO_WORKERS</code>)</div>
+          <div class="k">Throughput</div><div>scales with GPUs, not CPU cores: debayer + colour + encode run on the GPU, so one render worker per GPU. On a multi-GPU render node the workers render in parallel; on a single-GPU machine (e.g. any Apple Silicon Mac) they funnel to one GPU and run one at a time — hence the default of 1.</div>
+          <div class="k">Colour</div><div>GPU debayer + transform from camera space → a selectable display colourspace (Rec.1886, sRGB, P3, DCI-P3…)</div>
+          <div class="k">Run</div><div><code>./bootstrap.sh</code> once, then <code>./run.sh</code> → <code>http://localhost:8080</code></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== DIRECTORY CHOOSER ===================== -->
+  <div class="modal-bg" x-show="browseOpen" @click.self="browseOpen=false" style="z-index:55" x-cloak>
+    <div class="modal" style="max-width:640px">
+      <button class="modal-x" @click="browseOpen=false" title="Close">✕</button>
+      <div style="padding:1.1rem 1.25rem">
+        <h3 style="margin:0 0 .6rem" x-text="browseMode==='output'?'Choose an output folder':'Choose a media folder'"></h3>
+        <div class="row" style="margin-bottom:.5rem;gap:.4rem">
+          <button class="btn-ghost btn btn-sm" @click="browseTo(browseHome)">Home</button>
+          <template x-for="v in browseVolumes" :key="v">
+            <button class="btn-ghost btn btn-sm" @click="browseTo('/Volumes/'+v)" x-text="v"></button>
+          </template>
+        </div>
+        <div class="browsepath" x-text="browsePath || '…'"></div>
+        <div class="browselist">
+          <div class="browseitem" @click="browseTo(browseParent)"><span class="ic">↑</span><span>..</span></div>
+          <template x-for="d in browseDirs" :key="d">
+            <div class="browseitem" @click="browseTo(joinPath(browsePath,d))"><span class="ic">📁</span><span x-text="d"></span></div>
+          </template>
+          <template x-if="!browseDirs.length"><div class="muted" style="padding:.55rem .65rem;font-size:.8rem">no sub-folders here</div></template>
+        </div>
+        <div class="row" style="margin-top:.85rem;justify-content:flex-end">
+          <button class="btn-ghost btn btn-sm" @click="browseOpen=false">Cancel</button>
+          <button class="btn" @click="chooseDir()">Use this folder</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODAL PLAYER ===================== -->
+  <template x-if="modal">
+    <div class="modal-bg" @click.self="closePlayer()">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="mh-name" x-text="modal.name"></span>
+          <span class="mh-tc" x-text="tc"></span>
+          <button class="mh-x" data-testid="player-close" @click="closePlayer()" title="Close">✕</button>
+        </div>
+        <div class="player">
+          <video x-ref="vid" data-testid="player-video" :src="modal.output_url" controls autoplay
+                 @timeupdate="tc = frameTC(modal, $refs.vid.currentTime)"></video>
+        </div>
+        <div class="foot">
+          <div class="pipe-info">
+            <span class="pill raw" x-show="modal.raw">RAW</span>
+            <span class="pill"><b style="color:var(--raw)" x-text="modal.camera"></b><span class="muted" x-show="modal.input_cs" x-text="'  ·  '+pretty(modal.input_cs)"></span></span>
+            <span style="color:var(--accent)">→</span>
+            <span class="pill ok" x-text="modal.out_codec"></span>
+            <span class="pill" x-text="modal.out_colourspace"></span>
+          </div>
+          <span style="flex:1 1 auto"></span>
+          <a :href="modal.output_url" download>download</a>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ===================== FLAPI CALL LOG (bottom drawer) ===================== -->
+  <div class="drawer">
+    <div class="drawer-head" data-testid="drawer" @click="drawerOpen=!drawerOpen">
+      <span class="drawer-title">FLAPI CALLS</span>
+      <span class="drawer-now">
+        <template x-if="currentCall"><span><span class="m" x-text="currentCall.method"></span><span x-show="currentCall.detail" x-text="'  —  '+currentCall.detail"></span></span></template>
+        <template x-if="!currentCall"><span class="muted">idle — run Probe / Scan / Transcode to see live FLAPI calls</span></template>
+      </span>
+      <button class="drawer-clear" @click.stop="clearLog()" x-show="callLog.length && drawerOpen">clear</button>
+      <span class="drawer-meta" data-testid="drawer-count" x-text="callLog.length+' calls'"></span>
+      <span class="drawer-caret" x-text="drawerOpen?'▴':'▾'" :title="drawerOpen?'collapse':'expand log'"></span>
+    </div>
+    <div class="drawer-body" x-show="drawerOpen">
+      <template x-if="!callLog.length"><div class="muted">No calls yet.</div></template>
+      <template x-for="(l,i) in reversedLog" :key="l._i">
+        <div class="logline" data-testid="logline">
+          <span class="op" :class="l.op" x-text="l.label ? l.op+' · '+shortLabel(l.label) : l.op"></span>
+          <span class="m" x-text="l.method"></span>
+          <span class="d" x-text="l.detail"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <script>
+    function app(){
+      return {
+        tab:'env',
+        probe:{service_up:false,connected:false,application:{},licence:{},capabilities:{},decoders:[]},
+        probing:false,
+        dir:'/Volumes/Extreme SSD/transcode_demo_media',
+        deliverable:'h264_web',
+        colourspace:'Video_Full',
+        clips:[],
+        scanning:false,
+        scanMsg:'',
+        submitting:false,
+        modal:null,
+        tc:'00:00:00:00',
+        procs:[],
+        svc:{},
+        browseOpen:false, browseMode:'source', browsePath:'', browseParent:'', browseDirs:[], browseVolumes:[], browseHome:'',
+        outDir:'', workers:3,
+        callLog:[], currentCall:null, drawerOpen:false, _logSeq:0,
+
+        init(){
+          this.dir = localStorage.getItem('tcdemo_dir') || this.dir;   // remember last path
+          this.connectEvents(); this.runProbe(); this.loadClips(); this.loadConfig();
+          this.loadProcs(); setInterval(()=>this.loadProcs(), 2000);
+        },
+        get workerSlots(){ return Array.from({length:this.workers},(_,i)=>i); },
+
+        connectEvents(){
+          const es=new EventSource('/events');
+          es.onmessage=(e)=>{ let ev; try{ev=JSON.parse(e.data)}catch{return} this.onEvent(ev); };
+        },
+        onEvent(ev){
+          switch(ev.type){
+            case 'discover_started': this.clips=[]; this.scanning=true; this.scanMsg=''; break;
+            case 'scanning': break;
+            case 'clip': this.upsert(ev.clip); break;
+            case 'discover_done': this.scanning=false; this.scanMsg=`${ev.total} camera clips`; break;
+            case 'discover_error': this.scanning=false; this.scanMsg='error: '+ev.error; break;
+            case 'flapi_call':
+              ev._i=this._logSeq++; this.currentCall=ev; this.callLog.push(ev);
+              if(this.callLog.length>400) this.callLog.shift();
+              break;
+          }
+        },
+        get reversedLog(){ return this.callLog.slice().reverse(); },
+        clearLog(){ this.callLog=[]; this.currentCall=null; },
+        shortLabel(s){ s=s||''; return s.length>20 ? s.slice(0,19)+'…' : s; },
+        upsert(clip){
+          const i=this.clips.findIndex(c=>c.id===clip.id);
+          if(i>=0) this.clips[i]=clip; else this.clips.push(clip);
+          if(this.modal && this.modal.id===clip.id) this.modal=clip;
+        },
+
+        async runProbe(){
+          this.probing=true;
+          try{
+            this.probe=await (await fetch('/api/probe')).json();
+            if(this.deliverables.length && !this.deliverables.find(d=>d.key===this.deliverable))
+              this.deliverable=(this.recommendedDeliverables[0]||this.deliverables[0]).key;
+          } finally { this.probing=false; }
+        },
+        async loadClips(){
+          try{ const j=await (await fetch('/api/clips')).json(); if(j.clips?.length) this.clips=j.clips; }catch{}
+        },
+        async loadConfig(){
+          try{ const c=await (await fetch('/api/config')).json(); this.outDir=c.out_dir||''; this.workers=c.workers||3; }catch{}
+        },
+        async loadProcs(){
+          try{ const d=await (await fetch('/api/procs')).json(); this.procs=d.procs||[]; this.svc=d.service||{}; }catch{}
+        },
+        async killProc(pid){ await fetch('/api/kill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid})}); this.loadProcs(); },
+        async killAll(){ await fetch('/api/kill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})}); this.loadProcs(); },
+        fmtDur(s){ if(s==null) return '—'; s=Math.round(s); if(s<60) return s+'s'; return Math.floor(s/60)+'m '+(s%60)+'s'; },
+
+        // directory chooser (mode 'source' picks the scan dir, 'output' the transcode dir)
+        openBrowse(mode){ this.browseMode=mode==='output'?'output':'source';
+          this.browseOpen=true; this.browseTo((this.browseMode==='output'?this.outDir:this.dir)||''); },
+        async browseTo(path){
+          try{
+            const d=await (await fetch('/api/browse?path='+encodeURIComponent(path||''))).json();
+            this.browsePath=d.path; this.browseParent=d.parent; this.browseDirs=d.dirs||[];
+            this.browseVolumes=d.volumes||[]; this.browseHome=d.home||'';
+          }catch{}
+        },
+        joinPath(base,name){ return (base||'').replace(/\/+$/,'')+'/'+name; },
+        async chooseDir(){
+          if(this.browseMode==='output'){
+            try{
+              const r=await (await fetch('/api/outdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({out_dir:this.browsePath})})).json();
+              if(r.error){ alert(r.error); return; }
+              this.outDir=r.out_dir;
+            }catch(e){ alert('could not set output folder'); return; }
+          } else {
+            this.dir=this.browsePath;
+          }
+          this.browseOpen=false;
+        },
+
+        get supportedPresets(){ return (this.probe.capabilities?.presets||[]).filter(p=>p.supported); },
+        get deliverables(){ return this.probe.capabilities?.deliverables||[]; },
+        get recommendedDeliverables(){ return this.deliverables.filter(d=>d.recommended); },
+        get otherDeliverables(){ return this.deliverables.filter(d=>!d.recommended); },
+        get doneCount(){ return this.clips.filter(c=>c.state==='done').length; },
+        get transcoding(){ return this.submitting || this.clips.some(c=>c.state==='queued'||c.state==='rendering'); },
+        get activeWorkers(){ return Math.min(this.workers, this.clips.filter(c=>c.state==='rendering').length); },
+        pend(c){ return c.thumb_state==='pending'; },
+        get flatApp(){
+          const a=this.probe.application||{}, out={};
+          for(const k of ['Version','ProductName','Product','Build','Hostname','SystemID'])
+            if(a[k]!=null) out[k]=a[k];
+          if(!Object.keys(out).length) for(const k in a) if(typeof a[k]!=='object') out[k]=a[k];
+          return out;
+        },
+        get buildVersion(){ return this.probe.application?.Version || ''; },
+        get statusLine(){
+          if(!this.probe.connected) return 'not connected';
+          return 'Baselight '+(this.buildVersion||'')+' · '+this.workers+(this.workers===1?' worker':' workers');
+        },
+
+        async scan(){
+          if(!this.dir.trim()) return; this.tab='scan';
+          localStorage.setItem('tcdemo_dir', this.dir.trim());   // remember this path
+          const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:this.dir.trim()})});
+          if(!r.ok){ const j=await r.json(); this.scanMsg='error: '+(j.error||r.status); }
+        },
+        async transcode(c){
+          c.state='queued'; c.progress=0;           // optimistic: row reacts instantly
+          try{ await fetch('/api/transcode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deliverable:this.deliverable,ids:[c.id],colourspace:this.colourspace})}); }
+          catch{ c.state='idle'; }
+        },
+        async transcodeAll(){
+          this.submitting=true;                       // button dims/spins instantly
+          // optimistic: mark idle/failed rows queued so the table reacts at once
+          this.clips.forEach(c=>{ if(c.state==='idle'||c.state==='failed'){ c.state='queued'; c.progress=0; } });
+          try{ await fetch('/api/transcode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deliverable:this.deliverable,colourspace:this.colourspace})}); }
+          finally{ this.submitting=false; }
+        },
+        async cancelAll(){ await fetch('/api/cancel',{method:'POST'}); },
+        async deleteAll(){ await fetch('/api/delete_transcodes',{method:'POST'}); },
+
+        openPlayer(c){ if(c.output_url){ this.tc='00:00:00:00'; this.modal=c; } },
+        closePlayer(){ this.modal=null; },
+
+        pretty(s){ return (s||'').replace(/_/g,' '); },
+        fmtSize(b){ return b ? (b/1e6).toFixed(0)+'MB' : ''; },
+        // right-of-arrow reflects the current selection (it applies to all rows)
+        rightFormat(){
+          const d=this.deliverables.find(x=>x.key===this.deliverable);
+          return d ? d.label : '…';
+        },
+        rightCS(){ return this.csLabel(this.colourspace); },
+        get recommendedCS(){ return this.probe.capabilities?.recommended_colourspaces || []; },
+        get allCS(){ return this.probe.capabilities?.colourspaces || []; },
+        csLabel(key){
+          const r=this.recommendedCS.find(x=>x.key===key);
+          if(r) return r.label.split(' · ')[0];
+          return (key||'').replace(/_/g,' ');
+        },
+        burninLine(c){
+          const res = c.meta?.width ? `${c.meta.width}×${c.meta.height}` : 'HD';
+          return `${c.name}    ${c.out_codec||''}    ${c.out_colourspace||''}    ${res}`;
+        },
+        frameTC(c, t){
+          const fps = +(c.meta?.fps)||24;
+          // start timecode "HH:MM:SS:FF" -> frames, + elapsed
+          let base=0; const s=c.meta?.start_timecode;
+          const m=/^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(s||'');
+          if(m){ base=((+m[1]*3600)+(+m[2]*60)+(+m[3]))*Math.round(fps)+(+m[4]); }
+          let f=base+Math.round((t||0)*fps);
+          const fr=Math.round(fps);
+          const ff=f%fr; f=Math.floor(f/fr);
+          const ss=f%60; f=Math.floor(f/60);
+          const mm=f%60; const hh=Math.floor(f/60)%24;
+          const p=n=>String(n).padStart(2,'0');
+          return `${p(hh)}:${p(mm)}:${p(ss)}:${p(ff)}`;
+        },
+      };
+    }
+  </script>
+</body>
+</html>
