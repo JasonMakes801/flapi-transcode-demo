@@ -10,5 +10,4 @@ dist/
 .pytest_cache/
 
 # internal comms drafts — not for the public repo
-ZULIP_POST.md
-ZULIP_POST_update.md
+ZULIP_POST*.md
