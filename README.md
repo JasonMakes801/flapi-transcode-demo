@@ -98,9 +98,14 @@ run one at a time — hence the default of **1 worker** (one per GPU). Raise
 
 ## Tests
 
+From the repo dir, after `./bootstrap.sh`:
+
 ```bash
-pip install -e ".[test]" && python -m playwright install chromium
-pytest tests/test_scan_fallback.py     # fast, licence-free unit tests (the crawl fallback)
+source .venv/bin/activate               # activate the venv bootstrap made
+pip install -e ".[test]"                # one-time: pytest + pytest-playwright
+python -m playwright install chromium   # one-time: the browser the e2e test drives
+
+pytest tests/test_scan_fallback.py      # fast, licence-free unit tests (the crawl fallback)
 ./run_e2e.sh                            # end-to-end: drives the real UI headed so you can watch
 ```
 
